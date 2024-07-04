@@ -1,0 +1,60 @@
+name: build_api
+on:
+  push:
+    paths:
+      - 'api-docs/api.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: build_api
+  cancel-in-progress: true
+
+jobs:
+  build:
+    env:
+      GENERATOR_VERSION: '7.7.0'
+      FLUTTER_VERSION: '3.22.2'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4.1.7
+        with:
+          fetch-depth: '0'
+      - uses: actions/setup-java@v4.2.1
+        with:
+          java-version: 17
+          distribution: zulu
+      - name: Install flutter
+        uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Generate API
+        uses: craicoverflow/openapi-generator-generate-action@v1.2.1
+        with:
+          version: ${{ env.GENERATOR_VERSION }}
+          generator: dart-dio
+          input: api-docs/api.yaml
+          output: .
+          additional-properties: pubName=baas_api,pubPublishTo=none,pubRepository=${{ github.server_url }}/${{ github.repository }},pubHomepage=${{ github.server_url }}/${{ github.repository }}
+      - name: Run build_runner
+        run: |
+          flutter clean && flutter pub get
+          dart run build_runner build -d
+      - name: Commit the changes.
+        run: |
+          git config user.name 'Bot PDAX'
+          git config user.email 'bot@pdax.ph'
+          git add .
+          git commit -m "feat(api): Updates $(date -Idate)"
+      - name: Versioning
+        uses: bitshifted/git-auto-semver@v1.1.0
+        with:
+          main_branch: ${{ github.ref_name }}
+          create_tag: true
+          tag_prefix: 'v'
+      - name: Releases
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          tags: true
